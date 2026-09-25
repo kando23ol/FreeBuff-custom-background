@@ -1,0 +1,19 @@
+# Personal clips - never upload someone's videos to the repo
+*.mp4
+*.webm
+*.mov
+*.avi
+*.mkv
+*.gif
+
+# Backups created by Apply.ps1 (contains the user's local app files)
+index.html.before-video-bg
+
+# Test playground / scratch files
+testapp/
+*.log
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
