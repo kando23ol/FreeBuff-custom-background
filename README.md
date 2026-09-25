@@ -11,8 +11,10 @@ panel to upload your own clip and adjust brightness, opacity and blur live.
 - Adds a floating arrow tab on the right edge that opens a controls panel.
 - In the panel you can:
   - **Choose a clip** — pick any video or GIF from your PC. It is stored
-    locally in the app (IndexedDB), survives reloads, and is **never
-    uploaded anywhere**.
+    locally and is **never uploaded anywhere**.
+  - **Save to app folder** — writes the clip as `background.mp4` inside
+    the app, so it **survives full app restarts**. A merely picked clip
+    can be lost when the app relaunches.
   - Adjust **brightness**, **video opacity**, **blur** and
     **interface opacity** live; settings are remembered.
   - **Remove** the clip, or **reset** the sliders.
@@ -48,7 +50,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File Apply.ps1 -Undo          # r
   folder itself, or you can pass `-UiFolder` explicitly.
 - An existing `background.mp4` / `background.webm` / `background.gif`
   dropped into the app's `ui` folder is used automatically until you pick
-  a clip in the panel.
+  a clip in the panel. **This is the most reliable way to keep a clip**:
+  browser storage can be lost when the app restarts on a different local
+  port, but a file in the folder never is.
 
 ## Disclaimer
 

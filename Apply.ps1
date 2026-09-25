@@ -171,7 +171,8 @@ $PanelBlock = @'
         <button class="fbv-btn primary" id="fbv-choose">Choose a clip</button>
         <button class="fbv-btn" id="fbv-remove">Remove</button>
       </div>
-      <p class="fbv-hint">The clip is kept inside the app, so it survives a reload. Nothing is uploaded anywhere.</p>
+      <button class="fbv-btn" id="fbv-save" style="margin-top:7px" title="Save the clip as background.mp4 in the app folder, so it survives restarts">Save to app folder</button>
+      <p class="fbv-hint">A picked clip is kept in the app's browser storage and survives a reload, but an app restart can lose it. Use <b>Save to app folder</b> to keep it permanently as background.mp4. Nothing is uploaded anywhere.</p>
 
       <div class="fbv-group">
         <label>
@@ -363,6 +364,37 @@ $PanelBlock = @'
           storage('readwrite', function (store) { return store.put(file, 'current'); })
             .then(function () { setStatus(file.name + ' - ' + megabytes(file.size) + ' MB, saved'); })
             .catch(function () { setStatus(file.name + ' - could not be saved, so it resets on reload'); });
+        });
+
+        // Writes the picked clip to a real file (background.mp4) via the File
+        // System Access API. A file in the app folder always survives a
+        // restart, unlike browser storage, whose origin can change when the
+        // app relaunches on a different local port.
+        $('fbv-save').addEventListener('click', function () {
+          if (!clipUrl) { setStatus('Choose a clip first.'); return; }
+          if (!window.showSaveFilePicker) {
+            var a = document.createElement('a');
+            a.href = clipUrl;
+            a.download = 'background.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setStatus('Saved to your Downloads folder. Move it into the app ui folder as background.mp4.');
+            return;
+          }
+          window.showSaveFilePicker({ suggestedName: 'background.mp4', types: [{ description: 'Video', accept: { 'video/mp4': ['.mp4'] } }] })
+            .then(function (handle) {
+              return fetch(clipUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+                return handle.createWritable().then(function (writable) {
+                  return writable.write(blob).then(function () { return writable.close(); });
+                });
+              });
+            })
+            .then(function () { setStatus('Saved as background.mp4. Reload with Ctrl+R to use it.'); })
+            .catch(function (err) {
+              if (err && err.name === 'AbortError') return;
+              setStatus('Could not save to disk: ' + ((err && err.message) || err));
+            });
         });
 
         $('fbv-remove').addEventListener('click', function () {
