@@ -1,7 +1,12 @@
 # Freebuff Video Background (unofficial)
 
-Add a video or GIF background to the Freebuff Desktop app, with an on-screen
-panel to upload your own clip and adjust brightness, opacity and blur live.
+🎬 **Add a video or GIF background to Freebuff Desktop, with a live control panel. One-click install, fully local, unofficial.**
+
+🎬 為 Freebuff Desktop 加上影片或 GIF 背景，附即時調整面板。一鍵安裝、純本地運行、非官方出品。
+
+A single-file installer that adds a video or GIF wallpaper to the Freebuff Desktop app (Windows). A floating arrow on the right edge opens a control panel where you can pick any clip from your PC, then adjust brightness, opacity, blur and interface transparency live. Works like Wallpaper Engine for your Freebuff app — animated backgrounds, your own clips, everything stored on your machine and never uploaded anywhere.
+
+**Keywords:** freebuff, freebuff desktop, codebuff, video background, animated wallpaper, live wallpaper, background video, wallpaper engine, electron, custom background, desktop customization
 
 **This is not made by or affiliated with Freebuff / Codebuff. Use at your own risk.**
 
