@@ -140,6 +140,26 @@ $StyleBlock = @'
     #fbv-panel .fbv-btns { display: flex; gap: 7px; }
     #fbv-panel .fbv-btns > button { flex: 1 1 auto; }
     #fbv-panel .fbv-hint { margin: 9px 0 0; font-size: 10.5px; line-height: 1.5; color: #7f8c9d; }
+    #fbv-panel #fbv-library { margin-top: 8px; }
+    #fbv-panel .fbv-clip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px; margin-bottom: 5px;
+      background: rgb(255 255 255 / 0.06);
+      border: 1px solid rgb(255 255 255 / 0.12);
+      border-radius: 8px; cursor: pointer;
+    }
+    #fbv-panel .fbv-clip:hover { background: rgb(255 255 255 / 0.13); }
+    #fbv-panel .fbv-clip.active { border-color: #5b8cff; background: rgb(91 140 255 / 0.18); }
+    #fbv-panel .fbv-clip-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    #fbv-panel .fbv-clip-size { flex: none; color: #8d9aab; font-size: 10.5px; }
+    #fbv-panel .fbv-clip-del {
+      flex: none; width: 20px; height: 20px; line-height: 1;
+      background: rgb(255 255 255 / 0.08); color: #e8edf4;
+      border: 1px solid rgb(255 255 255 / 0.2); border-radius: 6px;
+      cursor: pointer; font-size: 12px; padding: 0;
+    }
+    #fbv-panel .fbv-clip-del:hover { background: rgb(255 80 80 / 0.35); }
+    #fbv-panel .fbv-lib-empty { margin: 6px 0 0; font-size: 11px; color: #7f8c9d; }
     #fbv-panel .fbv-state { margin: 0; font-size: 11.5px; color: #e8edf4; }
   </style>
 <!-- ==== end Freebuff video background ==== -->
@@ -173,6 +193,13 @@ $PanelBlock = @'
       </div>
       <button class="fbv-btn" id="fbv-save" style="margin-top:7px" title="Save the clip as background.mp4 in the app folder, so it survives restarts">Save to app folder</button>
       <p class="fbv-hint">A picked clip is kept in the app's browser storage and survives a reload, but an app restart can lose it. Use <b>Save to app folder</b> to keep it permanently as background.mp4. Nothing is uploaded anywhere.</p>
+
+      <div class="fbv-group">
+        <p class="fbv-state">Saved clips</p>
+        <div id="fbv-library"></div>
+        <button class="fbv-btn" id="fbv-lib-save" style="margin-top:7px" title="Keep this clip in the list so you can switch back to it with one click">Save this clip to the list</button>
+        <p class="fbv-hint">Click a saved clip to switch to it instantly. The list lives in the app's browser storage, so a restart can clear it - the folder copy from Save to app folder is the permanent one.</p>
+      </div>
 
       <div class="fbv-group">
         <label>
@@ -218,6 +245,8 @@ $PanelBlock = @'
         var video = document.getElementById('freebuff-video-bg');
         var img = document.getElementById('freebuff-video-bg-img');
         var clipUrl = null;
+        var lastBlob = null;
+        var currentName = null;
 
         function $(id) { return document.getElementById(id); }
         function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
@@ -264,17 +293,21 @@ $PanelBlock = @'
 
         function openDb() {
           return new Promise(function (resolve, reject) {
-            var request = window.indexedDB.open(DB_NAME, 1);
-            request.onupgradeneeded = function () { request.result.createObjectStore(STORE); };
+            var request = window.indexedDB.open(DB_NAME, 2);
+            request.onupgradeneeded = function () {
+              var db = request.result;
+              if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+              if (!db.objectStoreNames.contains('library')) db.createObjectStore('library');
+            };
             request.onsuccess = function () { resolve(request.result); };
             request.onerror = function () { reject(request.error); };
           });
         }
 
-        function storage(mode, action) {
+        function storage(mode, action, storeName) {
           return openDb().then(function (db) {
             return new Promise(function (resolve, reject) {
-              var tx = db.transaction(STORE, mode);
+              var tx = db.transaction(storeName || STORE, mode);
               var request = action(tx.objectStore(STORE));
               tx.oncomplete = function () { resolve(request ? request.result : undefined); };
               tx.onerror = function () { reject(tx.error); };
@@ -286,6 +319,7 @@ $PanelBlock = @'
         function showBlob(blob) {
           if (clipUrl) window.URL.revokeObjectURL(clipUrl);
           clipUrl = window.URL.createObjectURL(blob);
+          lastBlob = blob;
           var isImage = blob.type.indexOf('image/') === 0;
           video.hidden = isImage;
           img.hidden = !isImage;
@@ -315,10 +349,67 @@ $PanelBlock = @'
 
         function restoreClip() {
           storage('readonly', function (store) { return store.get('current'); })
-            .then(function (blob) {
-              if (!blob) return;
+            .then(function (entry) {
+              if (!entry) { renderLibrary(); return; }
+              // Older versions stored the bare blob; newer ones store a name too.
+              var blob = entry && entry.blob ? entry.blob : entry;
+              currentName = entry && entry.name ? entry.name : null;
               showBlob(blob);
-              setStatus('Saved clip, ' + megabytes(blob.size) + ' MB');
+              setStatus((currentName ? currentName + ' - ' : 'Saved clip, ') + megabytes(blob.size) + ' MB');
+              renderLibrary();
+            })
+            .catch(function () {});
+        }
+
+        // ---- saved clip library ----
+        function renderLibrary() {
+          var box = $('fbv-library');
+          if (!box) return;
+          storage('readonly', function (store) { return store.getAll(); }, 'library')
+            .then(function (entries) {
+              entries = (entries || []).filter(function (e) { return e && e.blob; });
+              box.innerHTML = '';
+              if (!entries.length) {
+                var empty = document.createElement('p');
+                empty.className = 'fbv-lib-empty';
+                empty.textContent = 'No saved clips yet.';
+                box.appendChild(empty);
+                return;
+              }
+              entries.sort(function (a, b) { return (b.added || 0) - (a.added || 0); });
+              entries.forEach(function (entry) {
+                var row = document.createElement('div');
+                row.className = 'fbv-clip' + (entry.name === currentName ? ' active' : '');
+                var name = document.createElement('span');
+                name.className = 'fbv-clip-name';
+                name.textContent = entry.name;
+                name.title = 'Switch to ' + entry.name;
+                var size = document.createElement('span');
+                size.className = 'fbv-clip-size';
+                size.textContent = megabytes(entry.blob.size) + ' MB';
+                var del = document.createElement('button');
+                del.className = 'fbv-clip-del';
+                del.textContent = '\u00d7';
+                del.title = 'Remove ' + entry.name + ' from the list';
+                row.appendChild(name);
+                row.appendChild(size);
+                row.appendChild(del);
+                row.addEventListener('click', function () {
+                  currentName = entry.name;
+                  showBlob(entry.blob);
+                  setStatus(entry.name + ' - ' + megabytes(entry.blob.size) + ' MB');
+                  storage('readwrite', function (store) { return store.put({ blob: entry.blob, name: entry.name }, 'current'); })
+                    .catch(function () {});
+                  renderLibrary();
+                });
+                del.addEventListener('click', function (event) {
+                  event.stopPropagation();
+                  storage('readwrite', function (store) { return store.delete(entry.name); }, 'library')
+                    .then(renderLibrary)
+                    .catch(function () {});
+                });
+                box.appendChild(row);
+              });
             })
             .catch(function () {});
         }
@@ -359,11 +450,21 @@ $PanelBlock = @'
           var isVideo = file.type.indexOf('video/') === 0;
           var isImage = file.type.indexOf('image/') === 0;
           if (!isVideo && !isImage) { setStatus('That is not a video or an image.'); return; }
+          currentName = file.name;
           showBlob(file);
           setStatus(file.name + ' - ' + megabytes(file.size) + ' MB');
-          storage('readwrite', function (store) { return store.put(file, 'current'); })
+          storage('readwrite', function (store) { return store.put({ blob: file, name: file.name }, 'current'); })
             .then(function () { setStatus(file.name + ' - ' + megabytes(file.size) + ' MB, saved'); })
             .catch(function () { setStatus(file.name + ' - could not be saved, so it resets on reload'); });
+        });
+
+        $('fbv-lib-save').addEventListener('click', function () {
+          if (!lastBlob) { setStatus('Choose a clip first.'); return; }
+          var name = currentName || 'clip ' + new Date().toLocaleString();
+          var entry = { blob: lastBlob, name: name, added: Date.now() };
+          storage('readwrite', function (store) { return store.put(entry, name); }, 'library')
+            .then(function () { setStatus('Added "' + name + '" to the saved list.'); renderLibrary(); })
+            .catch(function () { setStatus('Could not save to the list (storage unavailable).'); });
         });
 
         // Writes the picked clip to a real file (background.mp4) via the File
@@ -399,8 +500,10 @@ $PanelBlock = @'
 
         $('fbv-remove').addEventListener('click', function () {
           clearClip();
+          currentName = null;
           setStatus('No clip chosen.');
           storage('readwrite', function (store) { return store.delete('current'); }).catch(function () {});
+          renderLibrary();
         });
 
         $('fbv-reset').addEventListener('click', function () {

@@ -20,6 +20,9 @@ A single-file installer that adds a video or GIF wallpaper to the Freebuff Deskt
   - **Save to app folder** — writes the clip as `background.mp4` inside
     the app, so it **survives full app restarts**. A merely picked clip
     can be lost when the app relaunches.
+  - **Saved clips list** — keep several clips in a library and switch
+    between them with one click. Each row shows the name and size; the
+    active one is highlighted; the × button removes it from the list.
   - Adjust **brightness**, **video opacity**, **blur** and
     **interface opacity** live; settings are remembered.
   - **Remove** the clip, or **reset** the sliders.
