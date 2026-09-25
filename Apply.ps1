@@ -140,26 +140,38 @@ $StyleBlock = @'
     #fbv-panel .fbv-btns { display: flex; gap: 7px; }
     #fbv-panel .fbv-btns > button { flex: 1 1 auto; }
     #fbv-panel .fbv-hint { margin: 9px 0 0; font-size: 10.5px; line-height: 1.5; color: #7f8c9d; }
-    #fbv-panel #fbv-library { margin-top: 8px; }
+    #fbv-panel #fbv-library { margin-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     #fbv-panel .fbv-clip {
-      display: flex; align-items: center; gap: 6px;
-      padding: 6px 8px; margin-bottom: 5px;
+      display: flex; flex-direction: column; gap: 0;
+      padding: 0; overflow: hidden;
       background: rgb(255 255 255 / 0.06);
       border: 1px solid rgb(255 255 255 / 0.12);
-      border-radius: 8px; cursor: pointer;
+      border-radius: 8px; cursor: pointer; position: relative;
     }
     #fbv-panel .fbv-clip:hover { background: rgb(255 255 255 / 0.13); }
-    #fbv-panel .fbv-clip.active { border-color: #5b8cff; background: rgb(91 140 255 / 0.18); }
-    #fbv-panel .fbv-clip-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-    #fbv-panel .fbv-clip-size { flex: none; color: #8d9aab; font-size: 10.5px; }
+    #fbv-panel .fbv-clip.active { border-color: #5b8cff; box-shadow: 0 0 0 1px #5b8cff; }
+    #fbv-panel .fbv-clip-thumb {
+      width: 100%; aspect-ratio: 16 / 9; display: block;
+      object-fit: cover; background: #0a0c10;
+    }
+    #fbv-panel .fbv-clip-thumb.is-placeholder {
+      display: flex; align-items: center; justify-content: center;
+      color: #8d9aab; font-size: 20px;
+    }
+    #fbv-panel .fbv-clip-bar {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 7px;
+    }
+    #fbv-panel .fbv-clip-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    #fbv-panel .fbv-clip-size { flex: none; color: #8d9aab; font-size: 10px; }
     #fbv-panel .fbv-clip-del {
-      flex: none; width: 20px; height: 20px; line-height: 1;
+      flex: none; width: 18px; height: 18px; line-height: 1;
       background: rgb(255 255 255 / 0.08); color: #e8edf4;
-      border: 1px solid rgb(255 255 255 / 0.2); border-radius: 6px;
-      cursor: pointer; font-size: 12px; padding: 0;
+      border: 1px solid rgb(255 255 255 / 0.2); border-radius: 5px;
+      cursor: pointer; font-size: 11px; padding: 0;
     }
     #fbv-panel .fbv-clip-del:hover { background: rgb(255 80 80 / 0.35); }
-    #fbv-panel .fbv-lib-empty { margin: 6px 0 0; font-size: 11px; color: #7f8c9d; }
+    #fbv-panel .fbv-lib-empty { margin: 6px 0 0; font-size: 11px; color: #7f8c9d; grid-column: 1 / -1; }
     #fbv-panel .fbv-state { margin: 0; font-size: 11.5px; color: #e8edf4; }
   </style>
 <!-- ==== end Freebuff video background ==== -->
@@ -308,7 +320,7 @@ $PanelBlock = @'
           return openDb().then(function (db) {
             return new Promise(function (resolve, reject) {
               var tx = db.transaction(storeName || STORE, mode);
-              var request = action(tx.objectStore(STORE));
+              var request = action(tx.objectStore(storeName || STORE));
               tx.oncomplete = function () { resolve(request ? request.result : undefined); };
               tx.onerror = function () { reject(tx.error); };
               tx.onabort = function () { reject(tx.error); };
@@ -362,6 +374,40 @@ $PanelBlock = @'
         }
 
         // ---- saved clip library ----
+        // Grabs a frame from the clip to use as its thumbnail, so the list
+        // shows little previews instead of bare file names.
+        function makeThumb(blob) {
+          return new Promise(function (resolve) {
+            var url = window.URL.createObjectURL(blob);
+            var probe = document.createElement('video');
+            probe.muted = true;
+            probe.preload = 'metadata';
+            var done = false;
+            function finish(dataUrl) {
+              if (done) return;
+              done = true;
+              window.URL.revokeObjectURL(url);
+              probe.removeAttribute('src');
+              resolve(dataUrl || null);
+            }
+            probe.addEventListener('loadeddata', function () {
+              probe.currentTime = Math.min(1, (probe.duration || 2) / 2);
+            });
+            probe.addEventListener('seeked', function () {
+              try {
+                var canvas = document.createElement('canvas');
+                canvas.width = 160;
+                canvas.height = 90;
+                canvas.getContext('2d').drawImage(probe, 0, 0, 160, 90);
+                finish(canvas.toDataURL('image/jpeg', 0.6));
+              } catch (err) { finish(null); }
+            });
+            probe.addEventListener('error', function () { finish(null); });
+            window.setTimeout(function () { finish(null); }, 4000);
+            probe.src = url;
+          });
+        }
+
         function renderLibrary() {
           var box = $('fbv-library');
           if (!box) return;
@@ -372,14 +418,28 @@ $PanelBlock = @'
               if (!entries.length) {
                 var empty = document.createElement('p');
                 empty.className = 'fbv-lib-empty';
-                empty.textContent = 'No saved clips yet.';
+                empty.textContent = 'No saved clips yet. Pick one above, then press "Save this clip to the list".';
                 box.appendChild(empty);
                 return;
               }
               entries.sort(function (a, b) { return (b.added || 0) - (a.added || 0); });
               entries.forEach(function (entry) {
-                var row = document.createElement('div');
-                row.className = 'fbv-clip' + (entry.name === currentName ? ' active' : '');
+                var card = document.createElement('div');
+                card.className = 'fbv-clip' + (entry.name === currentName ? ' active' : '');
+                if (entry.thumb) {
+                  var thumb = document.createElement('img');
+                  thumb.className = 'fbv-clip-thumb';
+                  thumb.src = entry.thumb;
+                  thumb.alt = '';
+                  card.appendChild(thumb);
+                } else {
+                  var ph = document.createElement('div');
+                  ph.className = 'fbv-clip-thumb is-placeholder';
+                  ph.textContent = '\u25b6';
+                  card.appendChild(ph);
+                }
+                var bar = document.createElement('div');
+                bar.className = 'fbv-clip-bar';
                 var name = document.createElement('span');
                 name.className = 'fbv-clip-name';
                 name.textContent = entry.name;
@@ -391,10 +451,11 @@ $PanelBlock = @'
                 del.className = 'fbv-clip-del';
                 del.textContent = '\u00d7';
                 del.title = 'Remove ' + entry.name + ' from the list';
-                row.appendChild(name);
-                row.appendChild(size);
-                row.appendChild(del);
-                row.addEventListener('click', function () {
+                bar.appendChild(name);
+                bar.appendChild(size);
+                bar.appendChild(del);
+                card.appendChild(bar);
+                card.addEventListener('click', function () {
                   currentName = entry.name;
                   showBlob(entry.blob);
                   setStatus(entry.name + ' - ' + megabytes(entry.blob.size) + ' MB');
@@ -408,7 +469,7 @@ $PanelBlock = @'
                     .then(renderLibrary)
                     .catch(function () {});
                 });
-                box.appendChild(row);
+                box.appendChild(card);
               });
             })
             .catch(function () {});
@@ -461,8 +522,11 @@ $PanelBlock = @'
         $('fbv-lib-save').addEventListener('click', function () {
           if (!lastBlob) { setStatus('Choose a clip first.'); return; }
           var name = currentName || 'clip ' + new Date().toLocaleString();
-          var entry = { blob: lastBlob, name: name, added: Date.now() };
-          storage('readwrite', function (store) { return store.put(entry, name); }, 'library')
+          setStatus('Saving "' + name + '" to the list...');
+          makeThumb(lastBlob).then(function (thumb) {
+            var entry = { blob: lastBlob, name: name, added: Date.now(), thumb: thumb };
+            return storage('readwrite', function (store) { return store.put(entry, name); }, 'library');
+          })
             .then(function () { setStatus('Added "' + name + '" to the saved list.'); renderLibrary(); })
             .catch(function () { setStatus('Could not save to the list (storage unavailable).'); });
         });
