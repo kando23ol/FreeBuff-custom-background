@@ -235,7 +235,7 @@ $PanelBlock = @'
 
       <div class="fbv-group">
         <p class="fbv-state" id="fbv-play-state">Checking.</p>
-        <p class="fbv-hint">While the app is in the background the browser may pause the clip to save power. It is resumed the moment you come back.</p>
+        <p class="fbv-hint">While the app is in the background or minimised the clip pauses automatically, and starts again the moment you come back.</p>
       </div>
 
       <div class="fbv-group">
@@ -602,16 +602,26 @@ $PanelBlock = @'
           // at comes back 404.
           if (video.readyState === 0) {
             stateLine.textContent = 'No clip chosen.';
+          } else if (document.hidden || !document.hasFocus()) {
+            stateLine.textContent = 'Paused (app is in the background).';
           } else if (!video.paused) {
-            stateLine.textContent = document.visibilityState === 'hidden'
-              ? 'Playing while the app is in the background.'
-              : 'Playing.';
+            stateLine.textContent = 'Playing.';
           } else {
             stateLine.textContent = 'Paused.';
           }
         }
 
-        function resumeClip() {
+        // Pause whenever the window loses focus or is minimised, and play
+        // again the moment it is front and centre again. Chromium already
+        // throttles hidden tabs, but a visible-but-unfocused window (after
+        // Alt-Tab, say) would otherwise keep burning CPU on a clip nobody
+        // is watching.
+        function pauseClipWhenAway() {
+          if (!video.hidden && !video.paused) video.pause();
+          reportPlayState();
+        }
+
+        function playClipWhenBack() {
           if (!video.hidden && video.paused && (video.currentSrc || video.src)) {
             var started = video.play();
             if (started && started.catch) started.catch(function () {});
@@ -619,9 +629,15 @@ $PanelBlock = @'
           reportPlayState();
         }
 
-        document.addEventListener('visibilitychange', resumeClip);
-        window.addEventListener('focus', resumeClip);
-        window.setInterval(resumeClip, 5000);
+        function onActivityChange() {
+          if (document.hidden || !document.hasFocus()) pauseClipWhenAway();
+          else playClipWhenBack();
+        }
+
+        document.addEventListener('visibilitychange', onActivityChange);
+        window.addEventListener('blur', pauseClipWhenAway);
+        window.addEventListener('focus', playClipWhenBack);
+        window.setInterval(onActivityChange, 1000);
         video.addEventListener('play', reportPlayState);
         video.addEventListener('pause', reportPlayState);
 
