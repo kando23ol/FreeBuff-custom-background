@@ -247,7 +247,7 @@ $PanelBlock = @'
       (function () {
         'use strict';
 
-        var DEFAULTS = { brightness: 50, opacity: 50, blur: 0, panelAlpha: 62, collapsed: false };
+        var DEFAULTS = { brightness: 50, opacity: 50, blur: 0, panelAlpha: 62, collapsed: true };
         var LS_KEY = 'fbv:settings';
         var DB_NAME = 'freebuff-video-bg';
         var STORE = 'clips';
